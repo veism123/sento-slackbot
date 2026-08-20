@@ -64,12 +64,24 @@ is data.
 
 ### 2. The Slack app
 
-`slack-app-manifest.yaml` in this repo is the whole configuration. At
-api.slack.com/apps → **Create New App → From a manifest**, paste it, then:
+`slack-app-manifest.yaml` is the whole configuration. At api.slack.com/apps →
+**Create New App → From a manifest**, paste it, then:
 
-- **Install to Workspace** → copy the Bot User OAuth Token (`xoxb-…`)
-- **Basic Information** → copy the Signing Secret
+- **Basic Information → App-Level Tokens → Generate.** Give it the
+  `connections:write` scope. This is the `xapp-…` token.
+- **Install to Workspace** → copy the Bot User OAuth Token, the `xoxb-…` one.
 - Invite the bot to a channel: `/invite @sento`
+
+The manifest turns on **Socket Mode**, which means the bot opens an outbound
+connection to Slack rather than Slack calling in. No public URL, no tunnel, no
+request URL to configure, and nothing of yours exposed to the internet. It runs
+from a laptop.
+
+Slack does not allow Socket Mode apps to be distributed to other workspaces, so
+this is the transport for your own Slack. `src/server.ts` holds the HTTP events
+endpoint for when the app has to be installable by customers; leave
+`SLACK_APP_TOKEN` out of the environment and the bot starts in that mode
+instead.
 
 ### 3. Fill in `.env`
 
@@ -77,19 +89,17 @@ api.slack.com/apps → **Create New App → From a manifest**, paste it, then:
 cp .env.example .env
 ```
 
-Five values, and nothing works until all five are real:
-
 | Variable | Where it comes from |
 |---|---|
 | `SLACK_BOT_TOKEN` | Slack app → OAuth & Permissions → Bot User OAuth Token |
-| `SLACK_SIGNING_SECRET` | Slack app → Basic Information → Signing Secret |
-| `MIDLAND_BASE_URL` | The deployed Midland instance, e.g. `https://app.example.com` |
+| `SLACK_APP_TOKEN` | Slack app → Basic Information → App-Level Tokens |
+| `MIDLAND_BASE_URL` | The deployed Midland instance |
 | `MIDLAND_CLIENT_ID` / `MIDLAND_CLIENT_SECRET` | `npm run credential:mint`, above |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys |
 
-The token endpoint is discovered from
-`<MIDLAND_BASE_URL>/.well-known/oauth-authorization-server`, so you normally do
-not set `MIDLAND_TOKEN_URL` or `MIDLAND_MCP_URL`.
+`SLACK_SIGNING_SECRET` is only needed in HTTP mode. The Midland token endpoint
+is discovered from `<MIDLAND_BASE_URL>/.well-known/oauth-authorization-server`,
+so you normally do not set `MIDLAND_TOKEN_URL` or `MIDLAND_MCP_URL`.
 
 ### 4. Prove the Midland half before touching Slack
 
@@ -98,8 +108,9 @@ npm install
 npm run probe -- "what does this team mean by a courier?"
 ```
 
-If a token mints and the answer comes back with real workspace content, then
-everything left is Slack configuration.
+No Slack involved. If a token mints and the answer comes back with real
+workspace content, then auth, discovery, the MCP endpoint and the model call
+are all confirmed, and anything left is Slack configuration.
 
 ### 5. Run it
 
@@ -107,15 +118,11 @@ everything left is Slack configuration.
 npm start
 ```
 
-Slack needs a public URL. For local development, tunnel it:
+Then in Slack:
 
-```bash
-ngrok http 3000
 ```
-
-Put `https://<tunnel>/slack/events` into the manifest's `request_url` (Event
-Subscriptions). Slack sends a one-time `url_verification` challenge; the server
-answers it automatically, and the page turns green.
+@sento summarize what we just decided
+```
 
 ## DRY_RUN
 
@@ -127,8 +134,9 @@ where. Watch it pick the right entity a few times before setting
 ## Deploy
 
 Any always-on host — Railway, Fly, a small VM. `npm start`, one process, no
-database. Set every variable from `.env.example` in the host's environment
-rather than shipping a `.env`.
+database, and in Socket Mode no inbound networking, so it needs no domain and
+no certificate. Set every variable from `.env.example` in the host's
+environment rather than shipping a `.env`.
 
 The only state is an in-memory set of handled Slack event ids, which exists so a
 Slack retry does not file the same message twice. A restart forgets it; the

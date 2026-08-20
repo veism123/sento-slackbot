@@ -29,6 +29,13 @@ export const config = {
     get signingSecret(): string {
       return required("SLACK_SIGNING_SECRET");
     },
+    /** Socket Mode. Present means dial out; absent means listen on HTTP. */
+    get appToken(): string {
+      return required("SLACK_APP_TOKEN");
+    },
+    get hasAppToken(): boolean {
+      return optional("SLACK_APP_TOKEN") !== undefined;
+    },
   },
   midland: {
     get baseUrl(): string {
