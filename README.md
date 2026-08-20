@@ -31,21 +31,28 @@ tool loop in this repo: one `messages.stream` call does the whole exchange.
 
 ## Setup
 
-### 1. A Midland machine-writer credential
+### 1. A Midland courier credential
 
-A Midland operator mints it in the Midland repo:
+The bot authenticates as a courier: a machine principal with its own client id
+and secret, which shows up in Midland as something you can select under who may
+read and who may write an entity. A Midland operator mints it in the Midland
+repo:
 
 ```bash
 npm run credential:mint
 ```
 
-Mint one credential for this bot rather than reusing a courier's, so revoking
-the bot does not take a courier down with it.
+Mint one courier for this bot rather than sharing an existing one, so revoking
+the bot does not take anything else down with it, and so the bot can be named
+individually in an entity's read and write rules.
 
 What that credential can and cannot do, by what it is rather than by role:
 
 - **Can** write content — text bodies, metric observations, list entries — to
-  any entity in the workspace it is credentialed for.
+  any entity in the workspace it is credentialed for. Once per-entity rules can
+  name this courier, that is where you narrow it down, and that boundary is the
+  real one: it is enforced by Midland's gate, not by this repo. The tool
+  allowlist below is only a convenience on top.
 - **Cannot** create an entity. Deciding a new concept is a conversation people
   have; when nothing fits, the bot says so and records the gap through
   `list_entities`' `seeking` so admins see it.

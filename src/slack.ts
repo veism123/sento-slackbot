@@ -83,6 +83,35 @@ export async function fetchThread(channel: string, threadTs: string, limit = 30)
   });
 }
 
+/**
+ * When the bot is tagged outside a thread, "summarize this" means the recent
+ * conversation in the channel, not the single message carrying the mention.
+ */
+export async function fetchChannelHistory(channel: string, latestTs: string, limit = 50): Promise<ThreadMessage[]> {
+  const body = await call("conversations.history", { channel, latest: latestTs, limit, inclusive: false });
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  const parsed = messages.flatMap((raw) => {
+    if (typeof raw !== "object" || raw === null) return [];
+    const record = raw as Record<string, unknown>;
+    if (typeof record.text !== "string" || typeof record.ts !== "string") return [];
+    if (record.subtype !== undefined) return []; // joins, leaves, channel chatter
+    return [{ user: typeof record.user === "string" ? record.user : "unknown", text: record.text, ts: record.ts }];
+  });
+  // Slack returns newest first; a conversation reads oldest first.
+  return parsed.reverse();
+}
+
+/** A link back to the source, so a written summary stays traceable to it. */
+export async function getPermalink(channel: string, ts: string): Promise<string | undefined> {
+  try {
+    const body = await call("chat.getPermalink", { channel, message_ts: ts });
+    return typeof body.permalink === "string" ? body.permalink : undefined;
+  } catch (err) {
+    log.warn("Could not get a permalink", err);
+    return undefined;
+  }
+}
+
 const displayNames = new Map<string, string>();
 
 /** A Slack handle for attribution. Cached: the same few people all day. */

@@ -2,7 +2,17 @@ import http from "node:http";
 import { config } from "./config.ts";
 import { log } from "./log.ts";
 import { handleMention } from "./agent.ts";
-import { addReaction, fetchThread, getUserHandle, postMessage, stripMention, verifySlackSignature } from "./slack.ts";
+import {
+  addReaction,
+  fetchChannelHistory,
+  fetchThread,
+  getPermalink,
+  getUserHandle,
+  postMessage,
+  stripMention,
+  verifySlackSignature,
+} from "./slack.ts";
+import type { ThreadMessage } from "./slack.ts";
 
 /**
  * Slack retries any event it does not get a 200 for within three seconds, and
@@ -46,40 +56,59 @@ function readBody(request: http.IncomingMessage): Promise<string> {
 }
 
 /**
- * Everything the mention means: the thread it happened in, who said what, and
- * the instruction next to the mention itself. Tagging the bot on a thread means
- * "deal with this thread", not "deal with these two words".
+ * Everything the mention means: the conversation it happened in, who said what,
+ * and the instruction next to the mention itself.
+ *
+ * Which conversation depends on where the mention was. In a thread, the thread
+ * is the material. Outside one, "summarize this" means the recent channel
+ * conversation, not the single message carrying the mention.
  */
 async function buildPrompt(event: Record<string, unknown>): Promise<string> {
   const channel = String(event.channel);
-  const threadTs = typeof event.thread_ts === "string" ? event.thread_ts : String(event.ts);
+  const eventTs = String(event.ts);
+  const inThread = typeof event.thread_ts === "string";
+  const threadTs = inThread ? String(event.thread_ts) : eventTs;
   const askedBy = await getUserHandle(String(event.user));
   const instruction = stripMention(String(event.text ?? ""));
+
+  const [context, permalink] = await Promise.all([
+    (inThread
+      ? fetchThread(channel, threadTs)
+      : fetchChannelHistory(channel, eventTs)
+    ).catch((err): ThreadMessage[] => {
+      log.warn("Could not read the conversation; going on the mention alone.", err);
+      return [];
+    }),
+    getPermalink(channel, eventTs),
+  ]);
 
   const lines: string[] = [
     `Slack channel: ${channel}`,
     `Today's date: ${new Date().toISOString().slice(0, 10)}`,
     `Tagged by: @${askedBy}`,
+    `Link back to this moment in Slack: ${permalink ?? "(unavailable)"}`,
     "",
     `What they said to you: ${instruction === "" ? "(nothing beyond the mention)" : instruction}`,
   ];
 
-  const thread = await fetchThread(channel, threadTs).catch((err) => {
-    log.warn("Could not read the thread; going on the mention alone.", err);
-    return [];
-  });
-
-  const context = thread.filter((message) => message.ts !== String(event.ts));
-  if (context.length > 0) {
+  const material = context.filter((message) => message.ts !== eventTs);
+  if (material.length > 0) {
     const named = await Promise.all(
-      context.map(async (message) => `@${await getUserHandle(message.user)}: ${message.text}`),
+      material.map(async (message) => {
+        const when = new Date(Number(message.ts) * 1000).toISOString().replace("T", " ").slice(0, 16);
+        return `[${when}] @${await getUserHandle(message.user)}: ${message.text}`;
+      }),
     );
     lines.push(
       "",
-      "The thread they tagged you in, oldest first. This is the material:",
+      inThread
+        ? "The thread they tagged you in, oldest first. This is the material:"
+        : "The recent conversation in this channel, oldest first. This is the material:",
       "",
       ...named,
     );
+  } else {
+    lines.push("", "There is no surrounding conversation. The mention itself is all you have.");
   }
 
   return lines.join("\n");
