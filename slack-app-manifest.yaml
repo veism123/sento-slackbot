@@ -1,0 +1,27 @@
+# Paste this at api.slack.com/apps → Create New App → From a manifest.
+# Replace the two request URLs once you have a public URL for the bot.
+display_information:
+  name: Sento
+  description: Reads and writes your team's Midland context layer from Slack.
+  background_color: "#1a1a1a"
+features:
+  bot_user:
+    display_name: Sento
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read   # see the mentions addressed to it
+      - chat:write          # reply in thread
+      - channels:history    # read the thread it was tagged in (public channels)
+      - groups:history      # same, for private channels
+      - reactions:write     # 👀 on receipt, ✅ when something was written
+      - users:read          # resolve a user id to a handle, for attribution
+settings:
+  event_subscriptions:
+    request_url: https://YOUR-PUBLIC-URL/slack/events
+    bot_events:
+      - app_mention
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
