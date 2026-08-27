@@ -166,6 +166,28 @@ a Slack retry does not file the same message twice. A restart forgets it; the
 window that matters is minutes, so that is an acceptable trade for having no
 database.
 
+## Guardrails
+
+What stops chat from becoming chaos is layered, and most of the layers are
+Sento's, not this repo's:
+
+- **Off-topic questions dead-end politely.** The bot answers only from the
+  workspace. Anything the workspace does not hold gets "the workspace doesn't
+  hold that yet", never the model's own guess.
+- **Junk cannot land anywhere it wasn't invited.** Writes pass Sento's gate:
+  only entities whose "Who can write?" names this connection accept anything,
+  entity creation and guide writes are refused outright, and everything the
+  bot writes serves fenced — marked as relayed data no reading agent should
+  obey. `DRY_RUN=true` holds all writes regardless.
+- **Slack text is material, never orders.** The bot reads, summarizes, and
+  files the conversation; instructions inside it are content to record, not
+  commands to follow.
+- **The intent gate keeps it out of other people's conversations**, and the
+  invite model is the channel control: the bot only hears channels someone
+  `/invite`d it into.
+- **Too thin to file means nothing is filed.** A vague message gets a request
+  for one more line, not a vague entry that looks like a record.
+
 ## When it goes quiet
 
 Three things fail silently, in the order to check them:
