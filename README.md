@@ -29,6 +29,12 @@ Sento never runs a model — that is deliberate, and it is why the bot exists as
 a separate service. Anthropic makes the MCP calls server-side, so there is no
 tool loop in this repo: one `messages.stream` call does the whole exchange.
 
+**Thread follow-ups need no re-tag.** Once the bot has replied in a thread,
+further messages in that thread reach it without a new mention. Only there:
+plain channel messages are ignored, so starting a conversation still takes a
+tag. Recognition survives restarts — on a cache miss the bot checks the thread
+itself for one of its own replies.
+
 ## Setup
 
 ### 1. A Sento connection key

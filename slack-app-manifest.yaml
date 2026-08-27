@@ -27,6 +27,8 @@ settings:
   event_subscriptions:
     bot_events:
       - app_mention
+      - message.channels   # thread follow-ups without re-tagging (public channels)
+      - message.groups     # same, for private channels
   interactivity:
     is_enabled: false
   org_deploy_enabled: false

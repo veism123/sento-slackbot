@@ -82,7 +82,10 @@ function runConnection(url: string, onEvent: (event: SlackEvent, eventId: string
       if (envelope.type !== "events_api") return;
 
       const event = envelope.payload?.event;
-      if (event === undefined || event.type !== "app_mention") return;
+      if (event === undefined) return;
+      // Mentions start conversations; plain messages may continue one in a
+      // thread the bot is part of — dispatch decides which qualify.
+      if (event.type !== "app_mention" && event.type !== "message") return;
       if (event.bot_id !== undefined) return;
 
       const eventId = envelope.payload?.event_id ?? `${String(event.channel)}:${String(event.ts)}`;

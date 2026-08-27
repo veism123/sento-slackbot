@@ -84,7 +84,10 @@ const server = http.createServer((request, response) => {
     if (payload.type !== "event_callback") return;
 
     const event = payload.event as SlackEvent | undefined;
-    if (event === undefined || event.type !== "app_mention") return;
+    if (event === undefined) return;
+    // Mentions start conversations; plain messages may continue one in a
+    // thread the bot is part of — dispatch decides which qualify.
+    if (event.type !== "app_mention" && event.type !== "message") return;
     if (event.bot_id !== undefined) return; // never answer ourselves
 
     const eventId =

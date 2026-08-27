@@ -112,6 +112,25 @@ export async function getPermalink(channel: string, ts: string): Promise<string 
   }
 }
 
+let botUserId: string | undefined;
+
+/**
+ * The bot's own user id, from auth.test, cached for the process lifetime.
+ * Needed to recognize our own replies in a thread and our own mention in a
+ * message. Undefined only if auth.test fails, in which case follow-up
+ * detection quietly degrades to mentions-only.
+ */
+export async function getBotUserId(): Promise<string | undefined> {
+  if (botUserId !== undefined) return botUserId;
+  try {
+    const body = await call("auth.test", {});
+    if (typeof body.user_id === "string") botUserId = body.user_id;
+  } catch (err) {
+    log.warn("auth.test failed; follow-up detection is off until it succeeds.", err);
+  }
+  return botUserId;
+}
+
 const displayNames = new Map<string, string>();
 
 /** A Slack handle for attribution. Cached: the same few people all day. */
