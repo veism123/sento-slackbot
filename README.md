@@ -1,4 +1,4 @@
-# midland-slack-bot
+# sento-slackbot
 
 Tag the bot in Slack. It reads and writes your team's Midland context layer over
 MCP.
