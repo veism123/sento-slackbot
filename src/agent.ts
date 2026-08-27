@@ -9,6 +9,45 @@ const anthropic = new Anthropic({ apiKey: config.anthropic.apiKey });
 const MCP_BETA = "mcp-client-2025-11-20";
 const SERVER_NAME = "sento";
 
+/** Small and fast on purpose: this runs on every untagged thread message. */
+const GATE_MODEL = "claude-haiku-4-5-20251001";
+
+/**
+ * The intent gate for untagged follow-ups. In a thread the bot is part of,
+ * people also talk to each other; without this check the bot answers all of
+ * it. One cheap call decides whether the newest message wants the bot at all.
+ * Fails closed: when in doubt, or on error, stay quiet — a missed follow-up
+ * costs a re-tag, an unwanted reply costs the room's patience.
+ */
+export async function isAddressedToBot(transcript: string, newest: string): Promise<boolean> {
+  try {
+    const response = await anthropic.messages.create({
+      model: GATE_MODEL,
+      max_tokens: 5,
+      system:
+        "You read the tail of a Slack thread in which an assistant bot (BOT) participates. " +
+        "Decide whether the NEWEST message is directed at the bot: a question to it, an instruction for it, " +
+        "or a direct reply to what the bot just said. Messages clearly addressed to other people, " +
+        "side conversations, acknowledgements like 'ok thanks', and general chatter are NOT for the bot. " +
+        "Answer with exactly YES or NO.",
+      messages: [
+        {
+          role: "user",
+          content: `${transcript}\n\nNEWEST message: ${newest}\n\nIs the NEWEST message directed at the bot? YES or NO.`,
+        },
+      ],
+    });
+    const text = response.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    return /\bYES\b/i.test(text);
+  } catch (err) {
+    log.warn("Intent gate failed; staying quiet on this follow-up.", err);
+    return false;
+  }
+}
+
 /** Read-only surface, used in dry run. */
 const READ_TOOLS = ["list_entities", "get_entity", "get_authoring_guide", "get_team_members", "get_skill", "get_manual"];
 /** Live surface: reads plus the three content writes. Deliberately no

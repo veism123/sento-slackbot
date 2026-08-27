@@ -35,6 +35,12 @@ plain channel messages are ignored, so starting a conversation still takes a
 tag. Recognition survives restarts — on a cache miss the bot checks the thread
 itself for one of its own replies.
 
+Being in the thread earns a message a hearing, not an answer: a small, fast
+model call (the intent gate) reads the tail of the thread and decides whether
+the newest message is directed at the bot at all. People talking to each
+other in a bot thread are left alone. The gate fails closed — when unsure it
+stays quiet, and a missed follow-up costs one re-tag.
+
 ## Setup
 
 ### 1. A Sento connection key

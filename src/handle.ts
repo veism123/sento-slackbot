@@ -1,5 +1,5 @@
 import { log } from "./log.ts";
-import { handleMention } from "./agent.ts";
+import { handleMention, isAddressedToBot } from "./agent.ts";
 import {
   addReaction,
   fetchChannelHistory,
@@ -96,6 +96,41 @@ async function qualifiesAsFollowUp(event: Record<string, unknown>): Promise<bool
     log.warn("Could not check a thread for our own replies; ignoring the message.", err);
   }
   return false;
+}
+
+/** How much thread tail the intent gate sees. Enough for who-answers-whom. */
+const GATE_CONTEXT_MESSAGES = 8;
+
+/**
+ * People in a bot thread also talk to each other. Being in the thread earns a
+ * message a hearing, not an answer: a cheap model call reads the tail of the
+ * thread and decides whether the newest message is for the bot at all.
+ */
+async function wantsTheBot(event: Record<string, unknown>): Promise<boolean> {
+  const channel = String(event.channel);
+  const threadTs = String(event.thread_ts);
+  const eventTs = String(event.ts);
+  const botId = await getBotUserId();
+
+  let transcript = "(the earlier thread could not be read)";
+  try {
+    const thread = await fetchThread(channel, threadTs);
+    const tail = thread.filter((message) => message.ts !== eventTs).slice(-GATE_CONTEXT_MESSAGES);
+    const lines = await Promise.all(
+      tail.map(async (message) =>
+        message.user === botId
+          ? `BOT: ${message.text}`
+          : `@${await getUserHandle(message.user)}: ${message.text}`,
+      ),
+    );
+    if (lines.length > 0) transcript = lines.join("\n");
+  } catch (err) {
+    log.warn("Could not read the thread tail for the intent gate.", err);
+  }
+
+  const wanted = await isAddressedToBot(transcript, String(event.text ?? ""));
+  if (!wanted) log.info(`Follow-up in ${channel} was not for us; staying quiet.`);
+  return wanted;
 }
 
 
@@ -205,7 +240,9 @@ export function dispatch(event: SlackEvent, eventId: string): void {
   const record = event as Record<string, unknown>;
   if (event.type === "message") {
     void (async () => {
-      if (await qualifiesAsFollowUp(record)) await work(record, true);
+      if (!(await qualifiesAsFollowUp(record))) return;
+      if (!(await wantsTheBot(record))) return;
+      await work(record, true);
     })();
     return;
   }
