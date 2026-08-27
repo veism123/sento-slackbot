@@ -1,11 +1,11 @@
 # sento-slackbot
 
-Tag the bot in Slack. It reads and writes your team's Midland context layer over
-MCP.
+Slack bot for the Sento context layer: tag it to ask questions answered from
+the workspace, or to file decisions and threads into it over MCP.
 
 ```
 @sento what did we ship this week?
-   → answers from the workspace, echoing Midland's own numbers and freshness verdicts
+   → answers from the workspace, echoing Sento's own numbers and freshness verdicts
 
 @sento save this to the FAQ
    → files the thread into the one entity that should hold it, and says which
@@ -14,8 +14,8 @@ MCP.
 ## How it works
 
 ```
-Slack mention ──► POST /slack/events
-                    signature verify, 200 within 3s, hand off
+Slack mention ──► Socket Mode (or POST /slack/events in HTTP mode)
+                    ack, hand off
                     │
                     └─► Claude (Messages API, MCP connector)
                           mcp_servers: [midland]  ← connection key as bearer
@@ -25,19 +25,19 @@ Slack mention ──► POST /slack/events
                           └─► reply in thread + ✅ if something was written
 ```
 
-Midland never runs a model — that is deliberate, and it is why the bot exists as
+Sento never runs a model — that is deliberate, and it is why the bot exists as
 a separate service. Anthropic makes the MCP calls server-side, so there is no
 tool loop in this repo: one `messages.stream` call does the whole exchange.
 
 ## Setup
 
-### 1. A Midland connection key
+### 1. A Sento connection key
 
-The bot authenticates as a courier: a machine connection that shows up in
-Midland as something you can select under who may read and who may write an
+The bot authenticates as a **courier**: a machine connection that shows up in
+Sento as something you can select under who may read and who may write an
 entity. A workspace admin creates it from the **Members panel**: name the
-connection, and the key is shown once ("Bot is connected"). Copy it then —
-it is not recoverable, and losing it means revoking the connection and adding
+connection, and the key is shown once ("Bot is connected"). Copy it then — it
+is not recoverable, and losing it means revoking the connection and adding
 another.
 
 The key does not expire and is the entire credential: it is sent as the
@@ -49,30 +49,28 @@ Create one connection for this bot rather than sharing an existing one, so
 revoking the bot does not take anything else down with it, and so the bot can
 be named individually in an entity's read and write rules.
 
-A new connection can write **nothing** until an admin grants it, per entity,
-under "Who can write?". Grant it on the entities the bot should feed and
-nowhere else — until then every write is refused, which looks like a bot bug
-but is the default-deny working. The write grant carries the read with it; for
-read-only material (a style guide, a convention) add the connection under
-"Who can read?" on that entity.
+### 2. Grants: what the bot can see and touch
 
-What that credential can and cannot do, by what it is rather than by role:
+A new connection can read and write **nothing**. Both are granted per entity,
+on the entity's card in Sento:
 
-- **Can** write content — text bodies, metric observations, list entries — to
-  any entity in the workspace it is credentialed for. Once per-entity rules can
-  name this courier, that is where you narrow it down, and that boundary is the
-  real one: it is enforced by Midland's gate, not by this repo. The tool
-  allowlist below is only a convenience on top.
-- **Cannot** create an entity. Deciding a new concept is a conversation people
-  have; when nothing fits, the bot says so and records the gap through
-  `list_entities`' `seeking` so admins see it.
-- **Cannot** write a retrieval or authoring guide, or delete a list entry.
+- **"Who can read?"** — add the connection on every entity the bot should
+  answer questions from. A courier sees only entities that name it; everything
+  else in the workspace is invisible to it, which is the fence working, not a
+  broken credential.
+- **"Who can write?"** — add it only on the entities it should file into. The
+  write grant carries its own read.
 
-Everything it writes serves **fenced**, because it crossed into the workspace
-from outside. That is not a penalty — it is what tells a reading agent the block
-is data.
+If the bot answers "the workspace holds nothing on that yet" about things you
+know exist, it is missing read grants, not broken.
 
-### 2. The Slack app
+What the credential can never do, by what it is rather than by role: create an
+entity (it records the gap via `list_entities`' `seeking` instead), write a
+retrieval or authoring guide, or delete a list entry. Everything it writes is
+served **fenced**, because it crossed into the workspace from outside — that
+is what tells a reading agent the block is data, not instructions.
+
+### 3. The Slack app
 
 `slack-app-manifest.yaml` is the whole configuration. At api.slack.com/apps →
 **Create New App → From a manifest**, paste it, then:
@@ -82,18 +80,14 @@ is data.
 - **Install to Workspace** → copy the Bot User OAuth Token, the `xoxb-…` one.
 - Invite the bot to a channel: `/invite @sento`
 
-The manifest turns on **Socket Mode**, which means the bot opens an outbound
-connection to Slack rather than Slack calling in. No public URL, no tunnel, no
-request URL to configure, and nothing of yours exposed to the internet. It runs
-from a laptop.
+The manifest turns on **Socket Mode**: the bot opens an outbound connection to
+Slack rather than Slack calling in. No public URL, no tunnel, nothing exposed
+to the internet. Socket Mode apps cannot be distributed to other workspaces;
+`src/server.ts` holds the HTTP events endpoint for when the app has to be
+installable by customers — leave `SLACK_APP_TOKEN` out of the environment and
+the bot starts in that mode instead.
 
-Slack does not allow Socket Mode apps to be distributed to other workspaces, so
-this is the transport for your own Slack. `src/server.ts` holds the HTTP events
-endpoint for when the app has to be installable by customers; leave
-`SLACK_APP_TOKEN` out of the environment and the bot starts in that mode
-instead.
-
-### 3. Fill in `.env`
+### 4. Fill in `.env`
 
 ```bash
 cp .env.example .env
@@ -103,16 +97,16 @@ cp .env.example .env
 |---|---|
 | `SLACK_BOT_TOKEN` | Slack app → OAuth & Permissions → Bot User OAuth Token |
 | `SLACK_APP_TOKEN` | Slack app → Basic Information → App-Level Tokens |
-| `MIDLAND_BASE_URL` | The deployed Midland instance, e.g. `https://app.sentohq.com` |
+| `MIDLAND_BASE_URL` | The deployed Sento instance, e.g. `https://app.sentohq.com` |
 | `MIDLAND_CONNECTION_KEY` | Members panel → the connection's key, shown once |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys |
 
 `SLACK_SIGNING_SECRET` is only needed in HTTP mode. The MCP endpoint defaults
 to `<MIDLAND_BASE_URL>/api/mcp`, so you normally do not set `MIDLAND_MCP_URL`.
 The key goes in the environment (the host's secret manager in production),
-never in source.
+never in source. Paste it bare: no quotes, no angle brackets.
 
-### 4. Prove the Midland half before touching Slack
+### 5. Prove the Sento half before touching Slack
 
 ```bash
 npm install
@@ -123,7 +117,7 @@ No Slack involved. If the answer comes back with real workspace content, then
 the key, the MCP endpoint and the model call are all confirmed, and anything
 left is Slack configuration.
 
-### 5. Run it
+### 6. Run it
 
 ```bash
 npm start
@@ -144,26 +138,44 @@ where. Watch it pick the right entity a few times before setting
 
 ## Deploy
 
-Any always-on host — Railway, Fly, a small VM. `npm start`, one process, no
-database, and in Socket Mode no inbound networking, so it needs no domain and
-no certificate. Set every variable from `.env.example` in the host's
-environment rather than shipping a `.env`.
+Any always-on host that runs a long-lived process — a Hetzner box with
+Coolify, Railway, Fly, a small VM. `npm start`, one process, no database, and
+in Socket Mode no inbound networking, so it needs no domain, no port, and no
+certificate. Set every variable from `.env.example` in the host's secret
+manager rather than shipping a `.env`, and disable any HTTP health check —
+this is a worker, not a website.
 
-The only state is an in-memory set of handled Slack event ids, which exists so a
-Slack retry does not file the same message twice. A restart forgets it; the
+Serverless platforms (Vercel, Lambda) are a poor fit: Socket Mode needs a
+persistent process, and the HTTP mode's ack-then-work shape fights function
+lifetimes.
+
+The only state is an in-memory set of handled Slack event ids, which exists so
+a Slack retry does not file the same message twice. A restart forgets it; the
 window that matters is minutes, so that is an acceptable trade for having no
 database.
 
+## When it goes quiet
+
+Three things fail silently, in the order to check them:
+
+1. **The process** — is it running? (Host logs; look for
+   `Connected to Slack over Socket Mode.`)
+2. **The key** — a `401` anywhere means revoked, never expired. Only a
+   workspace admin can issue a new one, and grants do not carry over to a new
+   connection.
+3. **The grants** — does each entity's "Who can read?" / "Who can write?"
+   still name this connection?
+
 ## What is not built
 
-- **DMs.** The bot answers `app_mention` only. A DM surface means deciding what
-  a message with no mention in it means.
+- **DMs.** The bot answers `app_mention` only. A DM surface means deciding
+  what a message with no mention in it means.
 - **Confirm-before-write.** A write happens as soon as Claude decides on one.
   If you want a human in the loop, the shape used elsewhere is propose in
   thread, write on 👍 — that needs somewhere to persist the pending proposal.
 - **Per-person identity.** Everyone in Slack writes as this one credential.
   Attribution is carried in the content ("via @handle in Slack"), not in
-  Midland's own provenance, which records the machine writer. Fine for a team
+  Sento's own provenance, which records the machine writer. Fine for a team
   dogfooding it; think again before a customer's Slack is connected.
 
 ## Tests
