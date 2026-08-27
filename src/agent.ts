@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaContentBlock, BetaMCPToolset } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { config, mcpUrl } from "./config.ts";
-import { forceRefresh, getMidlandToken } from "./midland.ts";
+import { getMidlandKey } from "./midland.ts";
 import { log } from "./log.ts";
 
 const anthropic = new Anthropic({ apiKey: config.anthropic.apiKey });
@@ -10,11 +10,11 @@ const MCP_BETA = "mcp-client-2025-11-20";
 const SERVER_NAME = "midland";
 
 /** Read-only surface, used in dry run. */
-const READ_TOOLS = ["list_entities", "get_entity", "get_authoring_guide", "get_team_members", "get_guide"];
+const READ_TOOLS = ["list_entities", "get_entity", "get_authoring_guide", "get_team_members", "get_skill", "get_manual"];
 /** Live surface: reads plus the three content writes. Deliberately no
  *  create_entity (a machine credential is refused it anyway), no guide writes,
  *  no deletes. */
-const WRITE_TOOLS = [...READ_TOOLS, "write_text", "write_metric", "write_list"];
+const WRITE_TOOLS = [...READ_TOOLS, "write_text", "write_metric", "write_list_entry"];
 
 const SYSTEM_PROMPT = `You are the Midland Slack bot. Someone tagged you in Slack. You reach the team's shared context layer, Midland, over MCP, and you can both read from it and write to it.
 
@@ -100,14 +100,15 @@ function isToolsetConfigRejection(err: unknown): boolean {
 }
 
 /**
- * An expired Midland token does not reach us as an HTTP 401: Anthropic makes
+ * A revoked connection key does not reach us as an HTTP 401: Anthropic makes
  * the MCP call server-side, so it comes back as a failed tool result inside an
- * otherwise successful message. This is how we notice.
+ * otherwise successful message. This is how we notice. The key never expires,
+ * so this always means revocation — an operator problem, never a retry.
  */
 function looksUnauthorized(blocks: BetaContentBlock[]): boolean {
   return blocks.some((block) => {
     if (block.type !== "mcp_tool_result" || !block.is_error) return false;
-    return /401|unauthor|invalid_token|expired/i.test(JSON.stringify(block.content));
+    return /401|unauthor|invalid_token|revoked/i.test(JSON.stringify(block.content));
   });
 }
 
@@ -126,8 +127,6 @@ function readToolCalls(blocks: BetaContentBlock[]): string[] {
 }
 
 async function runOnce(prompt: string, useAllowlist: boolean): Promise<BetaContentBlock[]> {
-  const token = await getMidlandToken();
-
   // Streamed because a save can make several MCP round trips before Claude
   // answers, and a non-streaming request would sit on an open HTTP connection
   // for the whole exchange.
@@ -137,7 +136,7 @@ async function runOnce(prompt: string, useAllowlist: boolean): Promise<BetaConte
     betas: [MCP_BETA],
     system: SYSTEM_PROMPT + (config.dryRun ? DRY_RUN_SUFFIX : ""),
     thinking: { type: "adaptive" },
-    mcp_servers: [{ type: "url", url: mcpUrl(), name: SERVER_NAME, authorization_token: token }],
+    mcp_servers: [{ type: "url", url: mcpUrl(), name: SERVER_NAME, authorization_token: getMidlandKey() }],
     tools: [buildToolset(useAllowlist)],
     messages: [{ role: "user", content: prompt }],
   });
@@ -151,9 +150,10 @@ async function runOnce(prompt: string, useAllowlist: boolean): Promise<BetaConte
  * connector, so there is no client-side tool loop here: Anthropic makes the MCP
  * calls server-side and the whole exchange comes back as one message.
  *
- * Two retries are worth having. A toolset the API version does not understand
- * is a hard 400 on the first call, and an expired access token surfaces as a
- * failed MCP tool result rather than an HTTP error we could catch.
+ * One retry is worth having: a toolset the API version does not understand is
+ * a hard 400 on the first call. A 401 from Midland is not retried — the
+ * connection key does not expire, so a refusal means it was revoked, and only
+ * a workspace admin can fix that.
  */
 export async function handleMention(prompt: string): Promise<AgentResult> {
   let blocks: BetaContentBlock[];
@@ -167,9 +167,11 @@ export async function handleMention(prompt: string): Promise<AgentResult> {
   }
 
   if (looksUnauthorized(blocks)) {
-    log.warn("Midland refused the token. Minting a new one and retrying once.");
-    forceRefresh();
-    blocks = await runOnce(prompt, true);
+    log.error("Midland refused the connection key. It was revoked; not retrying. Ask a workspace admin to issue a new key.");
+    return {
+      reply: "I could not reach the workspace: my connection key was refused, which means it has been revoked. A workspace admin needs to issue a new one.",
+      toolCalls: readToolCalls(blocks),
+    };
   }
 
   const reply = readReply(blocks);

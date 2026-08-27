@@ -41,18 +41,17 @@ export const config = {
     get baseUrl(): string {
       return trimTrailingSlash(required("MIDLAND_BASE_URL"));
     },
-    /** Both default off the base URL; discovery fills the token endpoint in. */
+    /** Defaults off the base URL. */
     get mcpUrl(): string | undefined {
       return optional("MIDLAND_MCP_URL");
     },
-    get tokenUrl(): string | undefined {
-      return optional("MIDLAND_TOKEN_URL");
-    },
-    get clientId(): string {
-      return required("MIDLAND_CLIENT_ID");
-    },
-    get clientSecret(): string {
-      return required("MIDLAND_CLIENT_SECRET");
+    /**
+     * The connection key from the Members panel, shown once at creation. It
+     * does not expire and is the entire credential; a 401 means it was
+     * revoked. Lives in the environment, never in source.
+     */
+    get connectionKey(): string {
+      return required("MIDLAND_CONNECTION_KEY");
     },
   },
   anthropic: {

@@ -18,9 +18,9 @@ Slack mention ──► POST /slack/events
                     signature verify, 200 within 3s, hand off
                     │
                     └─► Claude (Messages API, MCP connector)
-                          mcp_servers: [midland]  ← bearer minted per run
+                          mcp_servers: [midland]  ← connection key as bearer
                           Claude calls list_entities → get_entity →
-                          get_authoring_guide → write_text/metric/list
+                          get_authoring_guide → write_text/metric/list_entry
                           │
                           └─► reply in thread + ✅ if something was written
 ```
@@ -31,20 +31,30 @@ tool loop in this repo: one `messages.stream` call does the whole exchange.
 
 ## Setup
 
-### 1. A Midland courier credential
+### 1. A Midland connection key
 
-The bot authenticates as a courier: a machine principal with its own client id
-and secret, which shows up in Midland as something you can select under who may
-read and who may write an entity. A Midland operator mints it in the Midland
-repo:
+The bot authenticates as a courier: a machine connection that shows up in
+Midland as something you can select under who may read and who may write an
+entity. A workspace admin creates it from the **Members panel**: name the
+connection, and the key is shown once ("Bot is connected"). Copy it then —
+it is not recoverable, and losing it means revoking the connection and adding
+another.
 
-```bash
-npm run credential:mint
-```
+The key does not expire and is the entire credential: it is sent as the
+`Authorization` bearer on every request, with no token to mint or refresh. A
+`401` therefore always means the key was revoked — the bot stops and says so
+rather than retrying.
 
-Mint one courier for this bot rather than sharing an existing one, so revoking
-the bot does not take anything else down with it, and so the bot can be named
-individually in an entity's read and write rules.
+Create one connection for this bot rather than sharing an existing one, so
+revoking the bot does not take anything else down with it, and so the bot can
+be named individually in an entity's read and write rules.
+
+A new connection can write **nothing** until an admin grants it, per entity,
+under "Who can write?". Grant it on the entities the bot should feed and
+nowhere else — until then every write is refused, which looks like a bot bug
+but is the default-deny working. The write grant carries the read with it; for
+read-only material (a style guide, a convention) add the connection under
+"Who can read?" on that entity.
 
 What that credential can and cannot do, by what it is rather than by role:
 
@@ -93,13 +103,14 @@ cp .env.example .env
 |---|---|
 | `SLACK_BOT_TOKEN` | Slack app → OAuth & Permissions → Bot User OAuth Token |
 | `SLACK_APP_TOKEN` | Slack app → Basic Information → App-Level Tokens |
-| `MIDLAND_BASE_URL` | The deployed Midland instance |
-| `MIDLAND_CLIENT_ID` / `MIDLAND_CLIENT_SECRET` | `npm run credential:mint`, above |
+| `MIDLAND_BASE_URL` | The deployed Midland instance, e.g. `https://app.sentohq.com` |
+| `MIDLAND_CONNECTION_KEY` | Members panel → the connection's key, shown once |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys |
 
-`SLACK_SIGNING_SECRET` is only needed in HTTP mode. The Midland token endpoint
-is discovered from `<MIDLAND_BASE_URL>/.well-known/oauth-authorization-server`,
-so you normally do not set `MIDLAND_TOKEN_URL` or `MIDLAND_MCP_URL`.
+`SLACK_SIGNING_SECRET` is only needed in HTTP mode. The MCP endpoint defaults
+to `<MIDLAND_BASE_URL>/api/mcp`, so you normally do not set `MIDLAND_MCP_URL`.
+The key goes in the environment (the host's secret manager in production),
+never in source.
 
 ### 4. Prove the Midland half before touching Slack
 
@@ -108,9 +119,9 @@ npm install
 npm run probe -- "what does this team mean by a courier?"
 ```
 
-No Slack involved. If a token mints and the answer comes back with real
-workspace content, then auth, discovery, the MCP endpoint and the model call
-are all confirmed, and anything left is Slack configuration.
+No Slack involved. If the answer comes back with real workspace content, then
+the key, the MCP endpoint and the model call are all confirmed, and anything
+left is Slack configuration.
 
 ### 5. Run it
 

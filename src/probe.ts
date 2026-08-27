@@ -1,12 +1,13 @@
 import { config, mcpUrl } from "./config.ts";
-import { getMidlandToken } from "./midland.ts";
+import { getMidlandKey } from "./midland.ts";
 import { handleMention } from "./agent.ts";
 import { log } from "./log.ts";
 
 /**
- * The Midland half, without Slack in the way. Run this first: if the token
- * mints and a question comes back with real workspace content, then everything
- * left to do is Slack app configuration.
+ * The Midland half, without Slack in the way. Run this first: if a question
+ * comes back with real workspace content, then the key, the MCP endpoint and
+ * the model call are all confirmed, and everything left is Slack app
+ * configuration.
  *
  *   npm run probe -- "what shipped this week?"
  *   npm run probe -- "save this: we picked Railway for the bot host"
@@ -18,8 +19,8 @@ log.info(`Midland base: ${config.midland.baseUrl}`);
 log.info(`MCP endpoint: ${mcpUrl()}`);
 log.info(config.dryRun ? "DRY RUN: reads only." : "LIVE: writes are enabled.");
 
-const token = await getMidlandToken();
-log.info(`Token minted, ${token.length} characters. Not printing it.`);
+const key = getMidlandKey();
+log.info(`Connection key present, ${key.length} characters. Not printing it.`);
 
 if (question === "") {
   log.info('No prompt given, so stopping here. Try: npm run probe -- "what does this team mean by courier?"');
