@@ -129,7 +129,7 @@ async function work(event: Record<string, unknown>): Promise<void> {
 
 /**
  * Hand a mention off to be worked on. Returns immediately: every transport has
- * an acknowledgement deadline far shorter than a Midland round trip, so the
+ * an acknowledgement deadline far shorter than a Sento round trip, so the
  * work always outlives the acknowledgement.
  */
 export function dispatch(event: SlackEvent, eventId: string): void {

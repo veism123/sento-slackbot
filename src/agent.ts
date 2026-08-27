@@ -1,13 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaContentBlock, BetaMCPToolset } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { config, mcpUrl } from "./config.ts";
-import { getMidlandKey } from "./midland.ts";
+import { getSentoKey } from "./sento.ts";
 import { log } from "./log.ts";
 
 const anthropic = new Anthropic({ apiKey: config.anthropic.apiKey });
 
 const MCP_BETA = "mcp-client-2025-11-20";
-const SERVER_NAME = "midland";
+const SERVER_NAME = "sento";
 
 /** Read-only surface, used in dry run. */
 const READ_TOOLS = ["list_entities", "get_entity", "get_authoring_guide", "get_team_members", "get_skill", "get_manual"];
@@ -16,7 +16,7 @@ const READ_TOOLS = ["list_entities", "get_entity", "get_authoring_guide", "get_t
  *  no deletes. */
 const WRITE_TOOLS = [...READ_TOOLS, "write_text", "write_metric", "write_list_entry"];
 
-const SYSTEM_PROMPT = `You are the Midland Slack bot. Someone tagged you in Slack. You reach the team's shared context layer, Midland, over MCP, and you can both read from it and write to it.
+const SYSTEM_PROMPT = `You are the Sento Slack bot. Someone tagged you in Slack. You reach the team's shared context layer, Sento, over MCP, and you can both read from it and write to it.
 
 First work out which of these they want:
 
@@ -80,7 +80,7 @@ export type AgentResult = {
 
 /**
  * Everything off by default, then the tools we want switched back on by name.
- * An allowlist rather than a denylist, so a tool added to Midland later cannot
+ * An allowlist rather than a denylist, so a tool added to Sento later cannot
  * quietly become reachable from Slack.
  */
 function buildToolset(useAllowlist: boolean): BetaMCPToolset {
@@ -136,7 +136,7 @@ async function runOnce(prompt: string, useAllowlist: boolean): Promise<BetaConte
     betas: [MCP_BETA],
     system: SYSTEM_PROMPT + (config.dryRun ? DRY_RUN_SUFFIX : ""),
     thinking: { type: "adaptive" },
-    mcp_servers: [{ type: "url", url: mcpUrl(), name: SERVER_NAME, authorization_token: getMidlandKey() }],
+    mcp_servers: [{ type: "url", url: mcpUrl(), name: SERVER_NAME, authorization_token: getSentoKey() }],
     tools: [buildToolset(useAllowlist)],
     messages: [{ role: "user", content: prompt }],
   });
@@ -146,12 +146,12 @@ async function runOnce(prompt: string, useAllowlist: boolean): Promise<BetaConte
 }
 
 /**
- * One mention, handled. Claude reads and writes Midland through the MCP
+ * One mention, handled. Claude reads and writes Sento through the MCP
  * connector, so there is no client-side tool loop here: Anthropic makes the MCP
  * calls server-side and the whole exchange comes back as one message.
  *
  * One retry is worth having: a toolset the API version does not understand is
- * a hard 400 on the first call. A 401 from Midland is not retried — the
+ * a hard 400 on the first call. A 401 from Sento is not retried — the
  * connection key does not expire, so a refusal means it was revoked, and only
  * a workspace admin can fix that.
  */
@@ -167,7 +167,7 @@ export async function handleMention(prompt: string): Promise<AgentResult> {
   }
 
   if (looksUnauthorized(blocks)) {
-    log.error("Midland refused the connection key. It was revoked; not retrying. Ask a workspace admin to issue a new key.");
+    log.error("Sento refused the connection key. It was revoked; not retrying. Ask a workspace admin to issue a new key.");
     return {
       reply: "I could not reach the workspace: my connection key was refused, which means it has been revoked. A workspace admin needs to issue a new one.",
       toolCalls: readToolCalls(blocks),

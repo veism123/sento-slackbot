@@ -1,10 +1,10 @@
 import { config, mcpUrl } from "./config.ts";
-import { getMidlandKey } from "./midland.ts";
+import { getSentoKey } from "./sento.ts";
 import { handleMention } from "./agent.ts";
 import { log } from "./log.ts";
 
 /**
- * The Midland half, without Slack in the way. Run this first: if a question
+ * The Sento half, without Slack in the way. Run this first: if a question
  * comes back with real workspace content, then the key, the MCP endpoint and
  * the model call are all confirmed, and everything left is Slack app
  * configuration.
@@ -15,11 +15,11 @@ import { log } from "./log.ts";
 
 const question = process.argv.slice(2).join(" ").trim();
 
-log.info(`Midland base: ${config.midland.baseUrl}`);
+log.info(`Sento base: ${config.sento.baseUrl}`);
 log.info(`MCP endpoint: ${mcpUrl()}`);
 log.info(config.dryRun ? "DRY RUN: reads only." : "LIVE: writes are enabled.");
 
-const key = getMidlandKey();
+const key = getSentoKey();
 log.info(`Connection key present, ${key.length} characters. Not printing it.`);
 
 if (question === "") {

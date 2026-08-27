@@ -8,7 +8,7 @@
 #   event_subscriptions.request_url: https://YOUR-PUBLIC-URL/slack/events
 display_information:
   name: Sento
-  description: Reads and writes your team's Midland context layer from Slack.
+  description: Reads and writes your team's Sento context layer from Slack.
   background_color: "#1a1a1a"
 features:
   bot_user:

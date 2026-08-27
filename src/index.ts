@@ -14,7 +14,7 @@ import { startHttpServer } from "./server.ts";
  * workspaces, because Slack does not allow Socket Mode apps to be distributed.
  */
 
-log.info(`Midland: ${config.midland.baseUrl}`);
+log.info(`Sento: ${config.sento.baseUrl}`);
 log.info(`Model: ${config.anthropic.model}`);
 log.info(config.dryRun ? "DRY RUN: reads only, nothing will be written." : "LIVE: writes are enabled.");
 

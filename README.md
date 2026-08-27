@@ -18,7 +18,7 @@ Slack mention ──► Socket Mode (or POST /slack/events in HTTP mode)
                     ack, hand off
                     │
                     └─► Claude (Messages API, MCP connector)
-                          mcp_servers: [midland]  ← connection key as bearer
+                          mcp_servers: [sento]  ← connection key as bearer
                           Claude calls list_entities → get_entity →
                           get_authoring_guide → write_text/metric/list_entry
                           │
@@ -97,12 +97,12 @@ cp .env.example .env
 |---|---|
 | `SLACK_BOT_TOKEN` | Slack app → OAuth & Permissions → Bot User OAuth Token |
 | `SLACK_APP_TOKEN` | Slack app → Basic Information → App-Level Tokens |
-| `MIDLAND_BASE_URL` | The deployed Sento instance, e.g. `https://app.sentohq.com` |
-| `MIDLAND_CONNECTION_KEY` | Members panel → the connection's key, shown once |
+| `SENTO_BASE_URL` | The deployed Sento instance, e.g. `https://app.sentohq.com` |
+| `SENTO_CONNECTION_KEY` | Members panel → the connection's key, shown once |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API keys |
 
 `SLACK_SIGNING_SECRET` is only needed in HTTP mode. The MCP endpoint defaults
-to `<MIDLAND_BASE_URL>/api/mcp`, so you normally do not set `MIDLAND_MCP_URL`.
+to `<SENTO_BASE_URL>/api/mcp`, so you normally do not set `SENTO_MCP_URL`.
 The key goes in the environment (the host's secret manager in production),
 never in source. Paste it bare: no quotes, no angle brackets.
 

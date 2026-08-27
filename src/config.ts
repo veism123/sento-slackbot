@@ -37,13 +37,13 @@ export const config = {
       return optional("SLACK_APP_TOKEN") !== undefined;
     },
   },
-  midland: {
+  sento: {
     get baseUrl(): string {
-      return trimTrailingSlash(required("MIDLAND_BASE_URL"));
+      return trimTrailingSlash(required("SENTO_BASE_URL"));
     },
     /** Defaults off the base URL. */
     get mcpUrl(): string | undefined {
-      return optional("MIDLAND_MCP_URL");
+      return optional("SENTO_MCP_URL");
     },
     /**
      * The connection key from the Members panel, shown once at creation. It
@@ -51,7 +51,7 @@ export const config = {
      * revoked. Lives in the environment, never in source.
      */
     get connectionKey(): string {
-      return required("MIDLAND_CONNECTION_KEY");
+      return required("SENTO_CONNECTION_KEY");
     },
   },
   anthropic: {
@@ -72,5 +72,5 @@ export const config = {
 } as const;
 
 export function mcpUrl(): string {
-  return config.midland.mcpUrl ?? `${config.midland.baseUrl}/api/mcp`;
+  return config.sento.mcpUrl ?? `${config.sento.baseUrl}/api/mcp`;
 }

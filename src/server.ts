@@ -7,7 +7,7 @@ import type { SlackEvent } from "./handle.ts";
 
 /**
  * Slack retries any event it does not get a 200 for within three seconds, and
- * a Midland round trip takes far longer than that. So this route does nothing
+ * a Sento round trip takes far longer than that. So this route does nothing
  * but verify, acknowledge, and hand off. All the work happens after the
  * response has already gone out.
  */
