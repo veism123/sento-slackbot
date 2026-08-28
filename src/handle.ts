@@ -98,24 +98,27 @@ async function qualifiesAsFollowUp(event: Record<string, unknown>): Promise<bool
   return false;
 }
 
-/** How much thread tail the intent gate sees. Enough for who-answers-whom. */
+/** How much conversation tail the intent gate sees. Enough for who-answers-whom. */
 const GATE_CONTEXT_MESSAGES = 8;
 
 /**
- * People in a bot thread also talk to each other. Being in the thread earns a
- * message a hearing, not an answer: a cheap model call reads the tail of the
- * thread and decides whether the newest message is for the bot at all.
+ * People near the bot also talk to each other. Proximity earns a message a
+ * hearing, not an answer: a cheap model call reads the tail of the
+ * conversation (the thread when there is one, the channel otherwise) and
+ * decides whether the newest message is for the bot at all.
  */
 async function wantsTheBot(event: Record<string, unknown>): Promise<boolean> {
   const channel = String(event.channel);
-  const threadTs = String(event.thread_ts);
   const eventTs = String(event.ts);
+  const inThread = typeof event.thread_ts === "string";
   const botId = await getBotUserId();
 
-  let transcript = "(the earlier thread could not be read)";
+  let transcript = "(no earlier conversation could be read)";
   try {
-    const thread = await fetchThread(channel, threadTs);
-    const tail = thread.filter((message) => message.ts !== eventTs).slice(-GATE_CONTEXT_MESSAGES);
+    const context = inThread
+      ? await fetchThread(channel, String(event.thread_ts))
+      : await fetchChannelHistory(channel, eventTs);
+    const tail = context.filter((message) => message.ts !== eventTs).slice(-GATE_CONTEXT_MESSAGES);
     const lines = await Promise.all(
       tail.map(async (message) =>
         message.user === botId
@@ -125,12 +128,35 @@ async function wantsTheBot(event: Record<string, unknown>): Promise<boolean> {
     );
     if (lines.length > 0) transcript = lines.join("\n");
   } catch (err) {
-    log.warn("Could not read the thread tail for the intent gate.", err);
+    log.warn("Could not read the conversation tail for the intent gate.", err);
   }
 
   const wanted = await isAddressedToBot(transcript, String(event.text ?? ""));
-  if (!wanted) log.info(`Follow-up in ${channel} was not for us; staying quiet.`);
+  if (!wanted) log.info(`Message in ${channel} was not for us; staying quiet.`);
   return wanted;
+}
+
+/**
+ * The bot also answers to its bare name. "sento you alive" should work
+ * without the @. The name makes a message a candidate, never an automatic
+ * trigger: this team says "sento" all day about the company and the product,
+ * so the intent gate makes the call. The word-boundary match deliberately
+ * does not fire on "sentohq" or the like.
+ */
+async function qualifiesAsNameCall(event: Record<string, unknown>): Promise<boolean> {
+  if (event.subtype !== undefined) return false;
+  if (event.bot_id !== undefined) return false;
+  if (typeof event.user !== "string") return false;
+
+  const text = String(event.text ?? "");
+  if (!/\bsento\b/i.test(text)) return false;
+
+  const botId = await getBotUserId();
+  if (botId === undefined) return false;
+  if (event.user === botId) return false;
+  if (text.includes(`<@${botId}>`)) return false; // the app_mention path owns it
+
+  return wantsTheBot(event);
 }
 
 
@@ -240,9 +266,11 @@ export function dispatch(event: SlackEvent, eventId: string): void {
   const record = event as Record<string, unknown>;
   if (event.type === "message") {
     void (async () => {
-      if (!(await qualifiesAsFollowUp(record))) return;
-      if (!(await wantsTheBot(record))) return;
-      await work(record, true);
+      if (await qualifiesAsFollowUp(record)) {
+        if (await wantsTheBot(record)) await work(record, true);
+        return;
+      }
+      if (await qualifiesAsNameCall(record)) await work(record);
     })();
     return;
   }
